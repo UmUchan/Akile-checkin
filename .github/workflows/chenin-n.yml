@@ -51,20 +51,28 @@ jobs:
       - name: Send Notification to Google Chat
         if: always() # 確保無論執行成功或失敗都會發送通知
         env:
-          # 前後一致統一使用 GOOGLE_CHAT_WEBHOOK
           GOOGLE_CHAT_WEBHOOK: ${{ secrets.GOOGLE_CHAT_WEBHOOK }}
         run: |
-          # 根據執行狀態決定訊息標頭
+          # 根據執行狀態決定標頭
           if [ "${{ job.status }}" == "success" ]; then
             HEADER="✅ *Akile 每日簽到結果*"
           else
             HEADER="❌ *Akile 每日簽到失敗*"
           fi
 
-          # 組合要發送至 Google Chat 的 JSON 內容
-          PAYLOAD=$(jq -n \
-            --arg text "$HEADER\n\`\`\`\n${{ env.CHECKIN_MSG }}\n\`\`\`\n[檢視 GitHub Actions 完整 Log](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" \
-            '{text: $text}')
+          # 組合包含真正換行的內文，避免 \n 被轉義成純文字
+          LOG_LINK="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          
+          MESSAGE="${HEADER}
+
+\`\`\`
+${{ env.CHECKIN_MSG }}
+\`\`\`
+
+[檢視 GitHub Actions 完整 Log](${LOG_LINK})"
+
+          # 使用 jq 包裝為 JSON payload
+          PAYLOAD=$(jq -n --arg text "$MESSAGE" '{text: $text}')
 
           # 發送 POST 請求至 Google Chat Webhook
           curl -H 'Content-Type: application/json' \
