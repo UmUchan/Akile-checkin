@@ -1,0 +1,73 @@
+Name: Akile Daily Check-in
+
+on:
+  schedule:
+    # 北京時間每天 09:00 = UTC 每天 01:00
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+
+jobs:
+  checkin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run check-in and capture log
+        id: run_checkin
+        env:
+          AKILE_EMAIL: ${{ secrets.AKILE_EMAIL }}
+          AKILE_PASSWORD: ${{ secrets.AKILE_PASSWORD }}
+          AKILE_PUSH_KEY: ${{ secrets.AKILE_PUSH_KEY }}
+        run: |
+          # 執行腳本並將標準輸出與錯誤輸出寫入 checkin.log，同時印在控制台
+          python Akile-Checkin.py 2>&1 | tee checkin.log
+
+          # 抓取包含漢字 (Unicode 4E00-9FA5) 的行
+          CHINESE_LOG=$(grep -P "[\x{4e00}-\x{9fa5}]" checkin.log || echo "未抓取到中文日誌")
+
+          # 寫入 GitHub Actions 環境變數 (支援多行文字)
+          {
+            echo "CHECKIN_MSG<<EOF"
+            echo "$CHINESE_LOG"
+            echo "EOF"
+          } >> $GITHUB_ENV
+
+      - name: Send Notification to Google Chat
+        if: always() # 確保無論執行成功或失敗都會發送通知
+        env:
+          # 前後一致統一使用 GOOGLE_CHAT_WEBHOOK
+          GOOGLE_CHAT_WEBHOOK: ${{ secrets.GOOGLE_CHAT_WEBHOOK }}
+        run: |
+          # 根據執行狀態決定訊息標頭
+          if [ "${{ job.status }}" == "success" ]; then
+            HEADER="✅ *Akile 每日簽到結果*"
+          else
+            HEADER="❌ *Akile 每日簽到失敗*"
+          fi
+
+          # 組合要發送至 Google Chat 的 JSON 內容
+          PAYLOAD=$(jq -n \
+            --arg text "$HEADER\n\`\`\`\n${{ env.CHECKIN_MSG }}\n\`\`\`\n[檢視 GitHub Actions 完整 Log](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" \
+            '{text: $text}')
+
+          # 發送 POST 請求至 Google Chat Webhook
+          curl -H 'Content-Type: application/json' \
+               -X POST \
+               -d "$PAYLOAD" \
+               "$GOOGLE_CHAT_WEBHOOK"
