@@ -1,8 +1,8 @@
-Name: Akile Daily Check-in
+name: Akile Daily Check-in
 
 on:
   schedule:
-    # 北京時間每天 09:00 = UTC 每天 01:00
+    # 北京時間每天 08:00 = UTC 每天 00:00
     - cron: '0 0 * * *'
   workflow_dispatch:
 
