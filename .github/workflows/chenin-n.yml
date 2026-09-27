@@ -2,7 +2,7 @@ name: Akile Daily Check-in
 
 on:
   schedule:
-    # 北京時間每天 08:00 = UTC 每天 00:00
+    # 北京時間每天 09:00 = UTC 每天 01:00
     - cron: '0 0 * * *'
   workflow_dispatch:
 
@@ -35,21 +35,30 @@ jobs:
           AKILE_PASSWORD: ${{ secrets.AKILE_PASSWORD }}
           AKILE_PUSH_KEY: ${{ secrets.AKILE_PUSH_KEY }}
         run: |
-          # 執行腳本並將標準輸出與錯誤輸出寫入 checkin.log，同時印在控制台
+          # 暫時關閉 set -e 避免 Python 失敗時立刻中斷 Step
+          set +e
           python Akile-Checkin.py 2>&1 | tee checkin.log
+          PY_EXIT_CODE=${PIPESTATUS[0]}
+          set -e
 
           # 抓取包含漢字 (Unicode 4E00-9FA5) 的行
           CHINESE_LOG=$(grep -P "[\x{4e00}-\x{9fa5}]" checkin.log || echo "未抓取到中文日誌")
 
-          # 寫入 GitHub Actions 環境變數 (支援多行文字)
+          # 寫入 GitHub Actions 環境變數
           {
             echo "CHECKIN_MSG<<EOF"
             echo "$CHINESE_LOG"
             echo "EOF"
           } >> $GITHUB_ENV
 
+          # 若 Python 腳本執行失敗，在記錄完 Log 後拋出錯誤讓 Step 標記為失敗
+          if [ $PY_EXIT_CODE -ne 0 ]; then
+            echo "Python script failed with exit code $PY_EXIT_CODE"
+            exit $PY_EXIT_CODE
+          fi
+
       - name: Send Notification to Google Chat
-        if: always() # 確保無論執行成功或失敗都會發送通知
+        if: always()
         env:
           GOOGLE_CHAT_WEBHOOK: ${{ secrets.GOOGLE_CHAT_WEBHOOK }}
         run: |
@@ -60,16 +69,16 @@ jobs:
             HEADER="❌ *Akile 每日簽到失敗*"
           fi
 
-          # 組合包含真正換行的內文，避免 \n 被轉義成純文字
           LOG_LINK="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           
+          # Google Chat 超連結格式為 <URL|Text>
           MESSAGE="${HEADER}
 
 \`\`\`
 ${{ env.CHECKIN_MSG }}
 \`\`\`
 
-[檢視 GitHub Actions 完整 Log](${LOG_LINK})"
+<${LOG_LINK}|檢視 GitHub Actions 完整 Log>"
 
           # 使用 jq 包裝為 JSON payload
           PAYLOAD=$(jq -n --arg text "$MESSAGE" '{text: $text}')
