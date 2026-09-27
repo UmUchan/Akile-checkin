@@ -2,8 +2,8 @@ name: Akile Daily Check-in
 
 on:
   schedule:
-    # 北京時間每天 09:00 = UTC 每天 01:00
-    - cron: '0 1 * * *'
+    # 北京時間每天 08:00 = UTC 每天 00:00
+    - cron: '0 0 * * *'
   workflow_dispatch:
 
 jobs:
@@ -62,12 +62,8 @@ jobs:
 
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-          # 用「真正的換行」拼接訊息內容，而不是字面上的 \n
-          TEXT="${HEADER}
-\`\`\`
-${CHECKIN_MSG}
-\`\`\`
-[檢視 GitHub Actions 完整 Log](${RUN_URL})"
+          # 用 printf 產生真正的換行字元，避免破壞 YAML 縮排
+          TEXT=$(printf '%s\n```\n%s\n```\n[檢視 GitHub Actions 完整 Log](%s)' "$HEADER" "$CHECKIN_MSG" "$RUN_URL")
 
           PAYLOAD=$(jq -n --arg text "$TEXT" '{text: $text}')
 
