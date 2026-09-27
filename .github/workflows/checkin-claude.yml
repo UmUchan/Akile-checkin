@@ -62,8 +62,8 @@ jobs:
 
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-          # 用 printf 產生真正的換行字元，避免破壞 YAML 縮排
-          TEXT=$(printf '%s\n```\n%s\n```\n[檢視 GitHub Actions 完整 Log](%s)' "$HEADER" "$CHECKIN_MSG" "$RUN_URL")
+          # Google Chat 連結語法為 <URL|顯示文字>，不是 Markdown 的 [文字](URL)
+          TEXT=$(printf '%s\n```\n%s\n```\n<%s|檢視 GitHub Actions 完整 Log>' "$HEADER" "$CHECKIN_MSG" "$RUN_URL")
 
           PAYLOAD=$(jq -n --arg text "$TEXT" '{text: $text}')
 
